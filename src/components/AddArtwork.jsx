@@ -6,9 +6,13 @@ import {
   Search,
   Upload,
   CheckCircle,
+  X,
 } from "lucide-react";
 import TextInput from "./TextInput";
 import { createId } from "../utils";
+
+const ACCEPTED_IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp"];
+const MAX_IMAGE_SIZE = 10 * 1024 * 1024;
 
 export default function AddArtwork({ onSave, onCancel }) {
   const [step, setStep] = useState(1);
@@ -21,8 +25,7 @@ export default function AddArtwork({ onSave, onCancel }) {
     artist: "",
     medium: "Oil on canvas",
     dimensions: "",
-    imageUrl: "",
-    imageFile: null,
+    images: [],
   });
 
   useEffect(() => {
@@ -34,43 +37,72 @@ export default function AddArtwork({ onSave, onCancel }) {
   }, []);
 
   const handleFileUpload = (event) => {
-    const file = event.target.files?.[0];
+    const files = Array.from(event.target.files || []);
     setUploadError("");
 
-    if (!file) return;
+    if (files.length === 0) return;
 
-    const validTypes = ["image/jpeg", "image/png", "image/webp"];
-    const maxSize = 10 * 1024 * 1024;
-
-    if (!validTypes.includes(file.type)) {
-      setUploadError("Please upload a JPEG, PNG, or WEBP image.");
+    const invalidType = files.find((file) => !ACCEPTED_IMAGE_TYPES.includes(file.type));
+    if (invalidType) {
+      setUploadError("Please upload only JPEG, PNG, or WEBP images.");
       event.target.value = "";
       return;
     }
 
-    if (file.size > maxSize) {
-      setUploadError("Please upload an image smaller than 10MB.");
+    const oversizedFile = files.find((file) => file.size > MAX_IMAGE_SIZE);
+    if (oversizedFile) {
+      setUploadError("Each image must be smaller than 10MB.");
       event.target.value = "";
       return;
     }
 
-    const reader = new FileReader();
-    reader.onload = () => {
-      setFormData((prev) => ({
-        ...prev,
-        imageFile: file,
-        imageUrl: String(reader.result),
-      }));
-    };
-    reader.onerror = () => {
-      setUploadError("The image could not be read. Try another file.");
-    };
-    reader.readAsDataURL(file);
+    Promise.all(
+      files.map(
+        (file, index) =>
+          new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => {
+              resolve({
+                id: createId(),
+                label: files.length === 1 ? file.name : `${file.name}`,
+                url: String(reader.result),
+                fileName: file.name,
+                type: index === 0 && formData.images.length === 0 ? "front" : "supplemental",
+              });
+            };
+            reader.onerror = () => reject(new Error("The image could not be read."));
+            reader.readAsDataURL(file);
+          })
+      )
+    )
+      .then((newImages) => {
+        setFormData((prev) => ({
+          ...prev,
+          images: [...prev.images, ...newImages],
+        }));
+      })
+      .catch(() => {
+        setUploadError("One or more images could not be read. Try again.");
+      });
+
     event.target.value = "";
   };
 
+  const removeImage = (imageId) => {
+    setFormData((prev) => {
+      const nextImages = prev.images.filter((image) => image.id !== imageId);
+      return {
+        ...prev,
+        images: nextImages.map((image, index) => ({
+          ...image,
+          type: index === 0 ? "front" : image.type === "front" ? "supplemental" : image.type,
+        })),
+      };
+    });
+  };
+
   const handleAnalyze = () => {
-    if (!formData.imageUrl) return;
+    if (formData.images.length === 0) return;
     setIsAnalyzing(true);
     analysisTimeoutRef.current = setTimeout(() => {
       setIsAnalyzing(false);
@@ -79,6 +111,7 @@ export default function AddArtwork({ onSave, onCancel }) {
   };
 
   const handleSave = () => {
+    const primaryImage = formData.images[0];
     const newArtwork = {
       id: createId(),
       title: formData.title.trim() || "Untitled",
@@ -91,8 +124,9 @@ export default function AddArtwork({ onSave, onCancel }) {
       date: "Unknown",
       dimensions: formData.dimensions.trim() || "Unknown",
       condition: "Not recorded",
-      imageUrl: formData.imageUrl,
-      docScore: 20,
+      imageUrl: primaryImage?.url || "",
+      images: formData.images,
+      docScore: Math.min(35, 15 + formData.images.length * 5),
       estimates: {
         fairMarket: { low: 100, high: 300, currency: "USD" },
         insuranceReplacement: { low: 250, high: 450, currency: "USD" },
@@ -102,10 +136,10 @@ export default function AddArtwork({ onSave, onCancel }) {
       confidence: "Low",
       triage:
         "Not enough data for a strong estimate. Upload signature close-ups, a reverse image, measurements, acquisition records, and any gallery or appraisal documents before relying on this range.",
-      riskFlags: ["Incomplete documentation", "No reverse image uploaded"],
+      riskFlags: ["Incomplete documentation", "No verified provenance uploaded"],
       documents: [
-        { label: "Front Image", status: "uploaded" },
-        { label: "Back Image", status: "missing" },
+        { label: "Artwork Photos", status: formData.images.length > 0 ? "uploaded" : "missing" },
+        { label: "Back Image", status: formData.images.length > 1 ? "uploaded" : "missing" },
         { label: "Signature Detail", status: "missing" },
         { label: "Acquisition Record", status: "missing" },
         { label: "Prior Appraisal", status: "missing" },
@@ -113,6 +147,8 @@ export default function AddArtwork({ onSave, onCancel }) {
     };
     onSave(newArtwork);
   };
+
+  const primaryImage = formData.images[0];
 
   return (
     <div className="mx-auto max-w-2xl space-y-6">
@@ -138,34 +174,41 @@ export default function AddArtwork({ onSave, onCancel }) {
         <div className="space-y-6">
           <div>
             <input
-              id="front-image-upload"
+              id="artwork-image-upload"
               type="file"
               accept="image/jpeg,image/png,image/webp"
+              multiple
               onChange={handleFileUpload}
               className="sr-only"
             />
             <label
-              htmlFor="front-image-upload"
+              htmlFor="artwork-image-upload"
               className="block cursor-pointer rounded-xl border-2 border-dashed border-stone-300 p-10 text-center transition-colors hover:bg-stone-50"
             >
-              {formData.imageUrl ? (
+              {primaryImage ? (
                 <div className="space-y-3">
                   <img
-                    src={formData.imageUrl}
-                    alt="Artwork preview"
+                    src={primaryImage.url}
+                    alt="Primary artwork preview"
                     className="mx-auto h-56 rounded object-cover shadow"
                   />
                   <p className="text-sm font-medium text-slate-700">
-                    Replace front image
+                    Add more photos or replace selection
+                  </p>
+                  <p className="text-xs text-slate-500">
+                    {formData.images.length} photo{formData.images.length === 1 ? "" : "s"} selected
                   </p>
                 </div>
               ) : (
                 <div className="flex flex-col items-center text-slate-500">
                   <Camera className="mb-3 h-10 w-10 text-stone-400" />
                   <p className="font-medium text-slate-700">
-                    Upload front image
+                    Upload artwork photos
                   </p>
-                  <p className="mt-1 text-xs">JPEG, PNG, or WEBP up to 10MB</p>
+                  <p className="mt-1 text-xs">
+                    Select front, back, signature, label, and detail images. JPEG,
+                    PNG, or WEBP up to 10MB each.
+                  </p>
                 </div>
               )}
             </label>
@@ -176,6 +219,41 @@ export default function AddArtwork({ onSave, onCancel }) {
               </p>
             )}
           </div>
+
+          {formData.images.length > 0 && (
+            <div className="rounded-xl border border-stone-200 bg-white p-4 shadow-sm">
+              <div className="mb-3 flex items-center justify-between">
+                <p className="text-sm font-medium text-slate-700">
+                  Uploaded photos
+                </p>
+                <p className="text-xs text-slate-500">
+                  First image is used as the primary thumbnail.
+                </p>
+              </div>
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                {formData.images.map((image, index) => (
+                  <div key={image.id} className="group relative overflow-hidden rounded-lg border border-stone-200 bg-stone-100">
+                    <img
+                      src={image.url}
+                      alt={image.label || `Artwork photo ${index + 1}`}
+                      className="h-28 w-full object-cover"
+                    />
+                    <div className="absolute left-2 top-2 rounded bg-white/90 px-2 py-0.5 text-[10px] font-medium text-slate-700 shadow-sm">
+                      {index === 0 ? "Primary" : `Photo ${index + 1}`}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => removeImage(image.id)}
+                      className="absolute right-2 top-2 rounded-full bg-slate-900/80 p-1 text-white opacity-100 transition-opacity hover:bg-red-700 sm:opacity-0 sm:group-hover:opacity-100"
+                      aria-label={`Remove ${image.label || `photo ${index + 1}`}`}
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           <div className="rounded-xl border border-stone-200 bg-white p-5 shadow-sm">
             <div className="mb-4 flex items-center gap-2 text-sm text-slate-500">
@@ -244,7 +322,7 @@ export default function AddArtwork({ onSave, onCancel }) {
           <button
             type="button"
             onClick={handleAnalyze}
-            disabled={!formData.imageUrl || isAnalyzing}
+            disabled={formData.images.length === 0 || isAnalyzing}
             className="flex w-full items-center justify-center gap-2 rounded-md bg-amber-700 py-3 font-medium text-white transition-colors hover:bg-amber-800 disabled:cursor-not-allowed disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-amber-600 focus:ring-offset-2"
           >
             {isAnalyzing ? (
@@ -278,7 +356,7 @@ export default function AddArtwork({ onSave, onCancel }) {
           <div className="space-y-4 rounded-xl border border-stone-200 bg-white p-5 shadow-sm">
             <div className="flex gap-4">
               <img
-                src={formData.imageUrl}
+                src={primaryImage?.url}
                 className="h-24 w-24 rounded object-cover shadow-sm"
                 alt="Artwork thumbnail"
               />
@@ -296,7 +374,21 @@ export default function AddArtwork({ onSave, onCancel }) {
                 <p className="mt-2 text-xs font-medium text-amber-700">
                   Preliminary fair market estimate: $100–$300
                 </p>
+                <p className="mt-1 text-xs text-slate-500">
+                  {formData.images.length} photo{formData.images.length === 1 ? "" : "s"} attached
+                </p>
               </div>
+            </div>
+
+            <div className="grid grid-cols-3 gap-2 sm:grid-cols-5">
+              {formData.images.map((image, index) => (
+                <img
+                  key={image.id}
+                  src={image.url}
+                  alt={image.label || `Artwork photo ${index + 1}`}
+                  className="h-20 w-full rounded object-cover"
+                />
+              ))}
             </div>
 
             <div className="flex gap-2 rounded border border-amber-100 bg-amber-50 p-3 text-sm text-amber-800">
