@@ -13,6 +13,20 @@ export const initialCollection = [
     condition: "Good, minor surface grime",
     imageUrl:
       "https://images.unsplash.com/photo-1579783902614-a3fb3927b6a5?auto=format&fit=crop&q=80&w=800",
+    images: [
+      {
+        id: "art-1-front",
+        label: "Front image",
+        url: "https://images.unsplash.com/photo-1579783902614-a3fb3927b6a5?auto=format&fit=crop&q=80&w=800",
+        type: "front",
+      },
+      {
+        id: "art-1-detail",
+        label: "Surface detail",
+        url: "https://images.unsplash.com/photo-1578301978018-3005759f48f7?auto=format&fit=crop&q=80&w=800",
+        type: "detail",
+      },
+    ],
     docScore: 38,
     estimates: {
       fairMarket: { low: 250, high: 600, currency: "USD" },
@@ -46,6 +60,20 @@ export const initialCollection = [
     condition: "Excellent",
     imageUrl:
       "https://images.unsplash.com/photo-1541961017774-22349e4a1262?auto=format&fit=crop&q=80&w=800",
+    images: [
+      {
+        id: "art-2-front",
+        label: "Front image",
+        url: "https://images.unsplash.com/photo-1541961017774-22349e4a1262?auto=format&fit=crop&q=80&w=800",
+        type: "front",
+      },
+      {
+        id: "art-2-detail",
+        label: "Installation detail",
+        url: "https://images.unsplash.com/photo-1547826039-bfc35e0f1ea8?auto=format&fit=crop&q=80&w=800",
+        type: "detail",
+      },
+    ],
     docScore: 85,
     estimates: {
       fairMarket: { low: 4500, high: 6000, currency: "USD" },
