@@ -23,6 +23,14 @@ export default function App() {
     navigate("dashboard");
   };
 
+  const handleDeleteArtwork = (artworkId) => {
+    setCollection((prev) => prev.filter((art) => art.id !== artworkId));
+
+    if (selectedArtId === artworkId) {
+      navigate("dashboard");
+    }
+  };
+
   return (
     <div className="min-h-screen bg-[#f9f8f6] font-sans text-slate-800">
       <nav className="sticky top-0 z-10 border-b border-stone-200 bg-white">
@@ -71,6 +79,7 @@ export default function App() {
           <Dashboard
             collection={collection}
             onSelect={(id) => navigate("detail", id)}
+            onDelete={handleDeleteArtwork}
           />
         )}
 
@@ -79,6 +88,7 @@ export default function App() {
             <ArtworkDetail
               art={selectedArt}
               onBack={() => navigate("dashboard")}
+              onDelete={handleDeleteArtwork}
             />
           ) : (
             <EmptyState
